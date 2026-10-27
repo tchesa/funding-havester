@@ -1,0 +1,28 @@
+{
+  "name": "funding-harvester",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Delta-neutral funding rate carry bot for Binance (Phase 0: data + backtest)",
+  "type": "module",
+  "engines": {
+    "node": ">=22.13"
+  },
+  "scripts": {
+    "backfill": "node --no-warnings=ExperimentalWarning --import tsx src/scripts/backfill.ts",
+    "backtest": "node --no-warnings=ExperimentalWarning --import tsx src/scripts/backtest.ts",
+    "sweep": "node --no-warnings=ExperimentalWarning --import tsx src/scripts/sweep.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "dotenv": "^18.0.9",
+    "fflate": "^0.8.3",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.5"
+  }
+}
