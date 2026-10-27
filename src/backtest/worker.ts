@@ -1,15 +1,12 @@
 import { parentPort, workerData } from "node:worker_threads";
 import type { SimParams } from "../config/params.js";
-import { type LoadOptions, loadDataset } from "../data/loaders.js";
-import { openDb } from "../db/db.js";
+import type { Dataset } from "../data/loaders.js";
 import { computeMetrics } from "./metrics.js";
 import type { SimJob } from "./pool.js";
 import { simulate } from "./simulator.js";
 
-const { dbPath, load, sim } = workerData as { dbPath: string; load: LoadOptions; sim: SimParams };
-const db = openDb(dbPath);
-const ds = loadDataset(db, load);
-db.close();
+// The dataset's typed arrays are backed by SharedArrayBuffers, so this is a view, not a copy.
+const { ds, sim } = workerData as { ds: Dataset; sim: SimParams };
 
 parentPort!.on("message", (job: SimJob) => {
   try {

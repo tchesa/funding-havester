@@ -1,5 +1,5 @@
 import type { SimParams, StrategyParams } from "../config/params.js";
-import { type Dataset, fundingCountUpTo, type SymbolSeries, timeAt } from "../data/loaders.js";
+import { type Dataset, fundingCountUpTo, fundingPoints, type SymbolSeries, timeAt } from "../data/loaders.js";
 import { HOUR } from "../data/parse.js";
 import {
   allocate, capitalPerNotional, type Candidate, evaluateEntry, evaluateExit, predictFundingRate, type SymbolSnapshot,
@@ -215,7 +215,7 @@ export function simulate(ds: Dataset, cfg: SimConfig): SimResult {
     return {
       symbol: s.symbol,
       time: t,
-      recentRates: s.funding.slice(Math.max(0, cnt - lookback), cnt),
+      recentRates: fundingPoints(s, cnt - lookback, cnt),
       predictedRate: predictFundingRate(prem, interval),
       intervalHours: interval,
       perpQuoteVolume24h: s.perpVol24[i]!,
@@ -296,7 +296,10 @@ export function simulate(ds: Dataset, cfg: SimConfig): SimResult {
     // 5) Risk during bar i: liquidation on the intrabar high, margin maintenance at the bar close.
     if (i + 1 <= iTo) {
       for (const p of [...positions.values()]) {
-        const high = p.s.perpHigh[i]!;
+        // Binance liquidates on the mark price, which tracks the index (spot) rather than perp last-trade wicks.
+        const perpHigh = p.s.perpHigh[i]!;
+        const spotHigh = p.s.spotHigh[i]!;
+        const high = Number.isNaN(spotHigh) ? perpHigh : Math.min(perpHigh, spotHigh);
         if (Number.isNaN(high)) continue;
         const liq = shortLiquidationPrice(p.perpEntry, p.perpQty, p.margin, sim.maintenanceMarginRate);
         if (high >= liq) {

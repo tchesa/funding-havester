@@ -1,7 +1,7 @@
 import { availableParallelism } from "node:os";
 import { Worker } from "node:worker_threads";
 import type { SimParams, StrategyParams } from "../config/params.js";
-import type { LoadOptions } from "../data/loaders.js";
+import type { Dataset } from "../data/loaders.js";
 import type { Metrics } from "./metrics.js";
 
 export interface SimJob {
@@ -16,7 +16,7 @@ interface Pending {
   reject: (e: Error) => void;
 }
 
-/** Pool of workers, each holding its own copy of the dataset, running train-window sims. */
+/** Pool of workers sharing one dataset (typed arrays on SharedArrayBuffers, zero-copy). */
 export class SimPool {
   private workers: Worker[] = [];
   private idle: Worker[] = [];
@@ -24,9 +24,9 @@ export class SimPool {
   private pending = new Map<number, Pending>();
   private nextId = 0;
 
-  constructor(dbPath: string, load: LoadOptions, sim: SimParams, size = Math.max(1, availableParallelism() - 1)) {
+  constructor(ds: Dataset, sim: SimParams, size = Math.max(1, availableParallelism() - 1)) {
     for (let i = 0; i < size; i++) {
-      const w = new Worker(new URL("./worker-entry.mjs", import.meta.url), { workerData: { dbPath, load, sim } });
+      const w = new Worker(new URL("./worker-entry.mjs", import.meta.url), { workerData: { ds, sim } });
       w.on("message", (msg: { id: number; metrics?: Metrics; error?: string }) => {
         const p = this.pending.get(msg.id);
         this.pending.delete(msg.id);

@@ -67,7 +67,7 @@ const ds = loadDataset(db, load);
 db.close();
 log.info("sweep", { symbols: ds.symbols.length, combos: combos.length, windows: windows.length, first: iso(windows[0]!.testFrom) });
 
-const pool = new SimPool(env.DB_PATH, load, sim, values.workers ? Number(values.workers) : undefined);
+const pool = new SimPool(ds, sim, values.workers ? Number(values.workers) : undefined);
 log.info("workers", { size: pool.size });
 const t0 = Date.now();
 const { results, oos } = await runWalkForward(

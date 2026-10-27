@@ -34,6 +34,8 @@ export const simParamsSchema = z.object({
   /** Slippage per leg per side, as a fraction: a + b * sqrt(notional / hourlyQuoteVolume). */
   slippageA: z.number().nonnegative().default(0.0002),
   slippageB: z.number().nonnegative().default(0.01),
+  /** Hard cap on slippage per leg per side (thin/illiquid markets). */
+  slippageMax: z.number().positive().default(0.03),
   maintenanceMarginRate: z.number().nonnegative().default(0.005),
   /** Top up / rebalance when price is within this fraction of the liquidation price. */
   marginBufferTrigger: z.number().positive().default(0.3),

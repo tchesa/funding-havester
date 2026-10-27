@@ -93,3 +93,13 @@ describe("simulator robustness", () => {
     expect(r.equity.every((e) => Number.isFinite(e))).toBe(true);
   });
 });
+
+describe("cost model", () => {
+  it("caps slippage on vanishing volume", async () => {
+    const { slippage } = await import("../src/backtest/costs.js");
+    const sim = defaultSimParams();
+    expect(slippage(sim, 1000, 1e-7)).toBe(sim.slippageMax);
+    expect(slippage(sim, 1000, 0)).toBe(sim.slippageMax);
+    expect(slippage(sim, 1000, 24e6)).toBeCloseTo(sim.slippageA + sim.slippageB * Math.sqrt(1000 / 1e6));
+  });
+});

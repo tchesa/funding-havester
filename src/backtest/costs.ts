@@ -7,8 +7,8 @@ export function spotFee(p: SimParams): number {
 /** Slippage fraction for one leg, one side: a + b·sqrt(notional / hourly quote volume). */
 export function slippage(p: SimParams, notional: number, vol24: number): number {
   const hourly = vol24 / 24;
-  if (!(hourly > 0)) return p.slippageA + p.slippageB; // unknown volume: be pessimistic
-  return p.slippageA + p.slippageB * Math.sqrt(notional / hourly);
+  if (!(hourly > 0)) return p.slippageMax; // no volume: assume the worst
+  return Math.min(p.slippageMax, p.slippageA + p.slippageB * Math.sqrt(notional / hourly));
 }
 
 /** Round-trip cost (both legs, in and out) as a fraction of notional. */

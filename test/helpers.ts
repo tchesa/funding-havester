@@ -26,12 +26,13 @@ export function synthSeries(o: SynthOpts): SymbolSeries {
     perpClose: new Float64Array(n),
     perpHigh: new Float64Array(n),
     spotClose: new Float64Array(n),
+    spotHigh: new Float64Array(n),
     premClose: new Float64Array(n),
     perpVol24: new Float64Array(n).fill(o.vol24 ?? 1e12),
     spotVol24: new Float64Array(n).fill(o.vol24 ?? 1e12),
     fundingRate: new Float64Array(n).fill(NaN),
     fundingInterval: new Uint8Array(n),
-    funding: [],
+    t0: T0,
     fundingIdx: new Int32Array(0),
     firstIdx: 0,
     lastIdx: n - 1,
@@ -43,12 +44,12 @@ export function synthSeries(o: SynthOpts): SymbolSeries {
     s.perpClose[i] = price(i);
     s.spotClose[i] = price(i);
     s.perpHigh[i] = o.high ? o.high(i) : price(i);
+    s.spotHigh[i] = o.high ? o.high(i) : price(i);
     s.premClose[i] = o.premium ? o.premium(i) : 0;
     if (i % interval === 0) {
       const r = o.rate ? o.rate(i) : 0.0001;
       s.fundingRate[i] = r;
       s.fundingInterval[i] = interval;
-      s.funding.push({ time: T0 + i * HOUR, rate: r, intervalHours: interval });
       idx.push(i);
     }
   }
