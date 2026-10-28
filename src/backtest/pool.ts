@@ -1,12 +1,15 @@
 import { availableParallelism } from "node:os";
 import { Worker } from "node:worker_threads";
-import type { SimParams, StrategyParams } from "../config/params.js";
+import type { SimParams } from "../config/params.js";
 import type { Dataset } from "../data/loaders.js";
 import type { Metrics } from "./metrics.js";
 
+export type StrategyKind = "carry" | "spread";
+
 export interface SimJob {
   id: number;
-  strategy: StrategyParams;
+  /** StrategyParams for "carry", SpreadParams for "spread". */
+  strategy: unknown;
   from: number;
   to: number;
 }
@@ -24,9 +27,9 @@ export class SimPool {
   private pending = new Map<number, Pending>();
   private nextId = 0;
 
-  constructor(ds: Dataset, sim: SimParams, size = Math.max(1, availableParallelism() - 1)) {
+  constructor(ds: Dataset, sim: SimParams, size = Math.max(1, availableParallelism() - 1), kind: StrategyKind = "carry") {
     for (let i = 0; i < size; i++) {
-      const w = new Worker(new URL("./worker-entry.mjs", import.meta.url), { workerData: { ds, sim } });
+      const w = new Worker(new URL("./worker-entry.mjs", import.meta.url), { workerData: { ds, sim, kind } });
       w.on("message", (msg: { id: number; metrics?: Metrics; error?: string }) => {
         const p = this.pending.get(msg.id);
         this.pending.delete(msg.id);
@@ -46,7 +49,7 @@ export class SimPool {
     return this.workers.length;
   }
 
-  run(strategy: StrategyParams, from: number, to: number): Promise<Metrics> {
+  run(strategy: unknown, from: number, to: number): Promise<Metrics> {
     return new Promise((resolve, reject) => {
       this.queue.push({ job: { id: this.nextId++, strategy, from, to }, p: { resolve, reject } });
       this.pump();

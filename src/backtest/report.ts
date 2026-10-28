@@ -25,9 +25,9 @@ export function goNoGo(oos: CombinedOos, c: GoCriteria): { go: boolean; checks: 
   return { go: checks.every((x) => x.pass), checks };
 }
 
-const TUNED: Array<keyof StrategyParams> = ["entryThreshold", "exitThreshold", "k", "m", "n", "safetyFactor", "leverage", "maxPositions"];
+const CARRY_TUNED = ["entryThreshold", "exitThreshold", "k", "m", "n", "safetyFactor", "leverage", "maxPositions"];
 
-export interface ReportInput {
+export interface ReportInput<P = StrategyParams> {
   generatedAt: number;
   dataFrom: number;
   dataTo: number;
@@ -35,15 +35,21 @@ export interface ReportInput {
   combos: number;
   sim: SimParams;
   criteria: GoCriteria;
-  results: WindowResult[];
+  results: WindowResult<P>[];
   oos: CombinedOos;
   /** Full-period run with the most frequently selected params, for symbol/regime breakdowns. */
-  fullPeriod: { params: StrategyParams; metrics: Metrics };
+  fullPeriod: { params: P; metrics: Metrics };
   /** Optional run label, appended to the file name and title. */
   label?: string;
+  /** Param names shown per window (default: the carry strategy's tuned params). */
+  tuned?: string[];
+  /** Strategy name for the title. */
+  strategy?: string;
 }
 
-export function writeReport(dir: string, input: ReportInput): { md: string; json: string } {
+export function writeReport<P>(dir: string, input: ReportInput<P>): { md: string; json: string } {
+  const TUNED = input.tuned ?? CARRY_TUNED;
+  const param = (p: P, k: string) => String((p as Record<string, unknown>)[k]);
   mkdirSync(dir, { recursive: true });
   const stamp = new Date(input.generatedAt).toISOString().replace(/[:.]/g, "-").slice(0, 19) + (input.label ? `-${input.label}` : "");
   const { go, checks } = goNoGo(input.oos, input.criteria);
@@ -51,7 +57,7 @@ export function writeReport(dir: string, input: ReportInput): { md: string; json
   const fp = input.fullPeriod.metrics;
 
   const md: string[] = [];
-  md.push(`# Phase 0 backtest report${input.label ? ` (${input.label})` : ""}`, "");
+  md.push(`# Phase 0 backtest report${input.strategy ? `: ${input.strategy}` : ""}${input.label ? ` (${input.label})` : ""}`, "");
   md.push(`Generated ${new Date(input.generatedAt).toISOString()} · data ${iso(input.dataFrom)} → ${iso(input.dataTo)} · ${input.symbols} symbols · ${input.combos} param combos · ${input.results.length} walk-forward windows`, "");
   md.push(`## Verdict: ${go ? "GO ✅" : "NO-GO ❌"}`, "");
   md.push(`| Check | Value | Threshold | Pass |`, `|---|---|---|---|`);
@@ -68,13 +74,13 @@ export function writeReport(dir: string, input: ReportInput): { md: string; json
   md.push(`|---|---|---|---|---|---|${TUNED.map(() => "---").join("|")}|`);
   for (const r of input.results) {
     md.push(
-      `| ${iso(r.window.testFrom)}..${iso(r.window.testTo)} | ${pct(r.train.netApr, 1)} | ${pct(r.test.netApr, 1)} | ${pct(r.test.maxDrawdown, 1)} | ${r.test.trades} | ${pct(r.test.deployedShare, 0)} | ${TUNED.map((k) => String(r.params[k])).join(" | ")} |`,
+      `| ${iso(r.window.testFrom)}..${iso(r.window.testTo)} | ${pct(r.train.netApr, 1)} | ${pct(r.test.netApr, 1)} | ${pct(r.test.maxDrawdown, 1)} | ${r.test.trades} | ${pct(r.test.deployedShare, 0)} | ${TUNED.map((k) => param(r.params, k)).join(" | ")} |`,
     );
   }
   md.push("");
 
   md.push(`## Full period with modal params (in-sample, for breakdowns only)`, "");
-  md.push(`Params: ${TUNED.map((k) => `${k}=${input.fullPeriod.params[k]}`).join(", ")}`, "");
+  md.push(`Params: ${TUNED.map((k) => `${k}=${param(input.fullPeriod.params, k)}`).join(", ")}`, "");
   md.push(`- Net APR ${pct(fp.netApr)}, max DD ${pct(fp.maxDrawdown)}, deployed ${pct(fp.deployedShare, 0)}, avg utilization ${pct(fp.avgUtilization, 0)}, turnover ${fp.turnover.toFixed(1)}x/yr`);
   md.push(`- Trades ${fp.trades}, avg hold ${(fp.avgHoldingHours / 24).toFixed(1)} days, win rate ${pct(fp.winRate, 0)}, liquidations ${fp.liquidations}, margin top-ups ${fp.topups}, reductions ${fp.reductions}`);
   md.push(`- Income: funding ${usd(fp.income.funding)}, fees -${usd(fp.income.fees)}, slippage -${usd(fp.income.slippage)}, basis ${usd(fp.income.basis)}, net ${usd(fp.income.net)}`);

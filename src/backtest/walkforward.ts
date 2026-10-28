@@ -2,7 +2,7 @@ import type { SimParams, StrategyParams } from "../config/params.js";
 import type { Dataset } from "../data/loaders.js";
 import { HOUR } from "../data/parse.js";
 import { computeMetrics, type Metrics } from "./metrics.js";
-import { simulate } from "./simulator.js";
+import { simulate, type SimResult } from "./simulator.js";
 
 export interface Window {
   trainFrom: number;
@@ -27,12 +27,18 @@ export function makeWindows(from: number, to: number, trainMonths: number, testM
   return out;
 }
 
-export type Grid = { [K in keyof StrategyParams]?: Array<StrategyParams[K]> };
+export type Grid<P = StrategyParams> = { [K in keyof P]?: Array<P[K]> };
 
-export function expandGrid(base: StrategyParams, grid: Grid): StrategyParams[] {
-  let combos: StrategyParams[] = [{ ...base }];
-  for (const [key, vals] of Object.entries(grid) as Array<[keyof StrategyParams, unknown[]]>) {
-    const next: StrategyParams[] = [];
+/** Thresholds every strategy's params share (used to drop nonsensical combos). */
+interface Thresholds {
+  entryThreshold: number;
+  exitThreshold: number;
+}
+
+export function expandGrid<P extends Thresholds>(base: P, grid: Grid<P>): P[] {
+  let combos: P[] = [{ ...base }];
+  for (const [key, vals] of Object.entries(grid) as Array<[keyof P, unknown[]]>) {
+    const next: P[] = [];
     for (const c of combos) for (const v of vals) next.push({ ...c, [key]: v });
     combos = next;
   }
@@ -46,9 +52,9 @@ export function score(m: Metrics, ddPenalty = 0.5): number {
   return m.netApr - ddPenalty * m.maxDrawdown;
 }
 
-export interface WindowResult {
+export interface WindowResult<P = StrategyParams> {
   window: Window;
-  params: StrategyParams;
+  params: P;
   train: Metrics;
   test: Metrics;
   /** Test-window equity, normalized to start at 1. */
@@ -69,27 +75,31 @@ export interface CombinedOos {
 }
 
 /** Runs one train-window sim; swap in a worker pool for parallelism. */
-export type TrainRunner = (params: StrategyParams, from: number, to: number) => Promise<Metrics>;
+export type TrainRunner<P = StrategyParams> = (params: P, from: number, to: number) => Promise<Metrics>;
+/** Runs one sim in-process (test windows). */
+export type SimRunner<P = StrategyParams> = (params: P, from: number, to: number) => SimResult;
 
-export async function runWalkForward(
+export async function runWalkForward<P = StrategyParams>(
   ds: Dataset,
   sim: SimParams,
-  combos: StrategyParams[],
+  combos: P[],
   windows: Window[],
-  runTrain?: TrainRunner,
+  runTrain?: TrainRunner<P>,
   onProgress?: (msg: string) => void,
-): Promise<{ results: WindowResult[]; oos: CombinedOos }> {
-  const run: TrainRunner =
-    runTrain ?? (async (params, from, to) => computeMetrics(simulate(ds, { strategy: params, sim, from, to }), ds));
-  const results: WindowResult[] = [];
+  runSim?: SimRunner<P>,
+): Promise<{ results: WindowResult<P>[]; oos: CombinedOos }> {
+  const simRun: SimRunner<P> =
+    runSim ?? ((params, from, to) => simulate(ds, { strategy: params as StrategyParams, sim, from, to }));
+  const run: TrainRunner<P> = runTrain ?? (async (params, from, to) => computeMetrics(simRun(params, from, to), ds));
+  const results: WindowResult<P>[] = [];
   for (const [wi, w] of windows.entries()) {
-    let best: { params: StrategyParams; m: Metrics; s: number } | null = null;
+    let best: { params: P; m: Metrics; s: number } | null = null;
     const ms = await Promise.all(combos.map((params) => run(params, w.trainFrom, w.trainTo)));
     ms.forEach((m, ci) => {
       const s = score(m);
       if (!best || s > best.s) best = { params: combos[ci]!, m, s };
     });
-    const testRes = simulate(ds, { strategy: best!.params, sim, from: w.testFrom, to: w.testTo });
+    const testRes = simRun(best!.params, w.testFrom, w.testTo);
     const test = computeMetrics(testRes, ds);
     results.push({
       window: w,
@@ -105,7 +115,7 @@ export async function runWalkForward(
   return { results, oos: combine(results) };
 }
 
-export function combine(results: WindowResult[]): CombinedOos {
+export function combine<P>(results: WindowResult<P>[]): CombinedOos {
   let level = 1;
   let peak = 1;
   let maxDd = 0;

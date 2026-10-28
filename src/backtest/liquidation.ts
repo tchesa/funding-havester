@@ -16,3 +16,16 @@ export function marginTriggerPrice(entry: number, liq: number, buffer: number): 
 export function targetMargin(entry: number, qty: number, price: number, leverage: number): number {
   return qty * Math.max(0, price - entry) + (qty * price) / leverage;
 }
+
+/**
+ * Isolated-margin long: liquidated when qty·(entry − P) ≥ margin − mmr·qty·P
+ *   ⇒ P_liq = (entry − margin/qty) / (1 − mmr).
+ */
+export function longLiquidationPrice(entry: number, qty: number, margin: number, mmr: number): number {
+  return Math.max(0, (entry - margin / qty) / (1 - mmr));
+}
+
+/** Margin needed so that, at price P, the long again sits at leverage L (covers unrealized loss). */
+export function longTargetMargin(entry: number, qty: number, price: number, leverage: number): number {
+  return qty * Math.max(0, entry - price) + (qty * price) / leverage;
+}

@@ -10,6 +10,7 @@ export interface SynthOpts {
   hours: number;
   price?: (i: number) => number;
   high?: (i: number) => number;
+  low?: (i: number) => number;
   /** Funding rate at funding hour index i (every `interval` hours). */
   rate?: (i: number) => number;
   interval?: number;
@@ -29,8 +30,10 @@ export function synthSeries(o: SynthOpts): SymbolSeries {
     base: o.base ?? (o.symbol ?? "TESTUSDT").replace(/USDT$/, "").replace(/^.*:/, ""),
     perpClose: new Float64Array(n),
     perpHigh: new Float64Array(n),
+    perpLow: new Float64Array(n),
     spotClose: new Float64Array(n),
     spotHigh: new Float64Array(n),
+    spotLow: new Float64Array(n),
     premClose: new Float64Array(n),
     perpVol24: new Float64Array(n).fill(o.vol24 ?? 1e12),
     spotVol24: new Float64Array(n).fill(o.vol24 ?? 1e12),
@@ -49,6 +52,8 @@ export function synthSeries(o: SynthOpts): SymbolSeries {
     s.spotClose[i] = price(i);
     s.perpHigh[i] = o.high ? o.high(i) : price(i);
     s.spotHigh[i] = o.high ? o.high(i) : price(i);
+    s.perpLow[i] = o.low ? o.low(i) : price(i);
+    s.spotLow[i] = o.low ? o.low(i) : price(i);
     s.premClose[i] = o.premium ? o.premium(i) : 0;
     if (i % interval === 0) {
       const r = o.rate ? o.rate(i) : 0.0001;

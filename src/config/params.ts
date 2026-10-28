@@ -33,6 +33,38 @@ export const strategyParamsSchema = z.object({
 });
 export type StrategyParams = z.infer<typeof strategyParamsSchema>;
 
+/**
+ * Cross-venue perp-perp funding spread: short the perp on the venue paying the most funding,
+ * long the same coin's perp on the venue paying the least. Rates are per 8h.
+ */
+export const spreadParamsSchema = z.object({
+  /** Window for the realized funding average per venue, in hours. */
+  lookbackHours: z.number().int().positive().default(72),
+  /** Weight on the last 24h average vs. the full lookback (0..1): reacts faster to regime changes. */
+  recentWeight: z.number().min(0).max(1).default(0.3),
+  /** Enter when the expected spread (short venue − long venue) is at least this, per 8h. */
+  entryThreshold: z.number().default(0.0001),
+  /** Exit when the spread falls below this, per 8h. */
+  exitThreshold: z.number().default(0.00002),
+  /** Required: expected spread income over `expectedHoldingHours` ≥ safetyFactor × round-trip cost. */
+  safetyFactor: z.number().positive().default(1.5),
+  expectedHoldingHours: z.number().positive().default(240),
+  /** Per-leg leverage; each leg posts notional/leverage margin on its own exchange. */
+  leverage: z.number().min(1).max(10).default(3),
+  maxPositions: z.number().int().positive().default(5),
+  /** Max capital (both legs' margin) per position, as a fraction of equity. */
+  maxPositionFraction: z.number().positive().max(1).default(0.2),
+  /** Cash kept aside for margin top-ups. */
+  reserveFraction: z.number().min(0).max(1).default(0.2),
+  minPerpVolume24h: z.number().nonnegative().default(20_000_000),
+  minListingAgeDays: z.number().nonnegative().default(30),
+  /** Skip coins whose annualized realized volatility exceeds this (0 = off). */
+  maxEntryVolatility: z.number().nonnegative().default(0),
+  volatilityLookbackHours: z.number().int().positive().default(168),
+});
+export type SpreadParams = z.infer<typeof spreadParamsSchema>;
+export const defaultSpreadParams = (): SpreadParams => spreadParamsSchema.parse({});
+
 /** Cost and risk model used by the simulator (not by strategy decisions). */
 export const simParamsSchema = z.object({
   initialCapital: z.number().positive().default(10_000),
