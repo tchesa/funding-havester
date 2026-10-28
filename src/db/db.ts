@@ -67,8 +67,11 @@ CREATE TABLE IF NOT EXISTS fees (
 export function openDb(path: string): DatabaseSync {
   if (path !== ":memory:") mkdirSync(dirname(path), { recursive: true });
   const db = new DatabaseSync(path);
-  db.exec("PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL;");
+  db.exec("PRAGMA busy_timeout = 60000; PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL;");
   db.exec(SCHEMA);
+  // Multi-venue: rows written before venues existed are Binance.
+  const cols = db.prepare("PRAGMA table_info(symbols)").all() as Array<{ name: string }>;
+  if (!cols.some((c) => c.name === "venue")) db.exec("ALTER TABLE symbols ADD COLUMN venue TEXT NOT NULL DEFAULT 'binance'");
   return db;
 }
 
@@ -103,20 +106,23 @@ export function insertKlines(db: DatabaseSync, rows: KlineRow[]): void {
 }
 
 export interface SymbolRow {
+  /** Venue-qualified id (see data/venues.ts); klines/funding are stored under it. */
   symbol: string;
   base: string;
+  /** The spot pair's name on its venue (e.g. PEPEUSDT, PEPE-USDT). */
   spotSymbol: string;
+  venue?: string;
 }
 
 export function upsertSymbol(db: DatabaseSync, s: SymbolRow): void {
   db.prepare(
-    `INSERT INTO symbols (symbol, base, spot_symbol) VALUES (?, ?, ?)
-     ON CONFLICT(symbol) DO UPDATE SET base = excluded.base, spot_symbol = excluded.spot_symbol`,
-  ).run(s.symbol, s.base, s.spotSymbol);
+    `INSERT INTO symbols (symbol, base, spot_symbol, venue) VALUES (?, ?, ?, ?)
+     ON CONFLICT(symbol) DO UPDATE SET base = excluded.base, spot_symbol = excluded.spot_symbol, venue = excluded.venue`,
+  ).run(s.symbol, s.base, s.spotSymbol, s.venue ?? "binance");
 }
 
 export function listSymbols(db: DatabaseSync): SymbolRow[] {
-  return db.prepare("SELECT symbol, base, spot_symbol AS spotSymbol FROM symbols ORDER BY symbol").all() as unknown as SymbolRow[];
+  return db.prepare("SELECT symbol, base, spot_symbol AS spotSymbol, venue FROM symbols ORDER BY symbol").all() as unknown as SymbolRow[];
 }
 
 export function refreshSymbolRanges(db: DatabaseSync): void {

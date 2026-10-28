@@ -12,6 +12,9 @@ export interface EntryDecision {
 export function evaluateEntry(s: SymbolSnapshot, p: StrategyParams): EntryDecision {
   if (!passesUniverse(s, p)) return { enter: false, reason: "universe", candidate: null };
   if (s.cooldownUntil !== null && s.time < s.cooldownUntil) return { enter: false, reason: "cooldown", candidate: null };
+  if (p.maxEntryVolatility > 0 && (s.volatility === null || s.volatility > p.maxEntryVolatility)) {
+    return { enter: false, reason: "too_volatile", candidate: null };
+  }
 
   const expected = expectedFundingPer8h(s, p);
   const pred = predicted8h(s);

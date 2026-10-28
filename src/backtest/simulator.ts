@@ -5,7 +5,7 @@ import {
   allocate, capitalPerNotional, type Candidate, evaluateEntry, evaluateExit, predictFundingRate, type SymbolSnapshot,
 } from "../strategy/index.js";
 import { FORCED_EXITS } from "../strategy/types.js";
-import { roundTripCost, slippage, spotFee } from "./costs.js";
+import { perpFee, roundTripCost, slippage, spotFee } from "./costs.js";
 import { marginTriggerPrice, shortLiquidationPrice, targetMargin } from "./liquidation.js";
 
 export interface SimConfig {
@@ -81,13 +81,31 @@ function lastValid(arr: Float64Array, j: number, maxLookback = Infinity): number
   return NaN;
 }
 
+/** Annualized std dev of hourly log returns over the `lookback` closed bars before time i; null if under half are valid. */
+export function realizedVol(close: Float64Array, i: number, lookback: number): number | null {
+  let n = 0;
+  let sum = 0;
+  let sq = 0;
+  for (let j = Math.max(1, i - lookback); j <= i - 1; j++) {
+    const a = close[j - 1]!;
+    const b = close[j]!;
+    if (!(a > 0) || !(b > 0)) continue;
+    const r = Math.log(b / a);
+    n++;
+    sum += r;
+    sq += r * r;
+  }
+  if (n < Math.max(2, lookback / 2)) return null;
+  const mean = sum / n;
+  return Math.sqrt(Math.max(0, sq / n - mean * mean) * 8760);
+}
+
 export function simulate(ds: Dataset, cfg: SimConfig): SimResult {
   const { strategy: sp, sim } = cfg;
   const notice = (cfg.delistNoticeHours ?? 168) * HOUR;
   const iFrom = Math.max(1, Math.round((cfg.from - ds.t0) / HOUR));
   const iTo = Math.min(ds.hours - 1, Math.round((cfg.to - ds.t0) / HOUR));
   const cpn = capitalPerNotional(sp.leverage);
-  const fSpot = spotFee(sim);
   const lookback = sp.k + sp.n + sp.m + 2;
 
   let cash = sim.initialCapital;
@@ -123,7 +141,7 @@ export function simulate(ds: Dataset, cfg: SimConfig): SimResult {
   const open = (s: SymbolSeries, i: number, notional: number) => {
     const spotPx = spotAt(s, i);
     const perpPx = perpAt(s, i);
-    const fee = notional * fSpot + notional * sim.perpTakerFee;
+    const fee = notional * spotFee(sim, s.venue) + notional * perpFee(sim, s.venue);
     const slip = notional * (slippage(sim, notional, s.spotVol24[i]!) + slippage(sim, notional, s.perpVol24[i]!));
     const margin = notional / sp.leverage;
     cash -= notional + margin + fee + slip;
@@ -159,7 +177,7 @@ export function simulate(ds: Dataset, cfg: SimConfig): SimResult {
     const pq = p.perpQty * f;
     const spotVal = q * spotPx;
     const perpVal = pq * perpPx;
-    const fee = spotVal * fSpot + perpVal * sim.perpTakerFee;
+    const fee = spotVal * spotFee(sim, p.s.venue) + perpVal * perpFee(sim, p.s.venue);
     const slip = spotVal * slippage(sim, spotVal, p.s.spotVol24[i]!) + perpVal * slippage(sim, perpVal, p.s.perpVol24[i]!);
     const perpPnl = pq * (p.perpEntry - perpPx);
     const spotPnl = q * (spotPx - p.spotEntry);
@@ -181,7 +199,7 @@ export function simulate(ds: Dataset, cfg: SimConfig): SimResult {
     const spotPx = lastValid(p.s.spotClose, i);
     const perpLoss = p.margin; // whole isolated margin is gone
     const spotVal = p.spotQty * spotPx;
-    const fee = spotVal * fSpot;
+    const fee = spotVal * spotFee(sim, p.s.venue);
     const slip = spotVal * slippage(sim, spotVal, p.s.spotVol24[i]!);
     cash += spotVal - fee - slip;
     p.fees += fee;
@@ -230,9 +248,10 @@ export function simulate(ds: Dataset, cfg: SimConfig): SimResult {
       spotQuoteVolume24h: s.spotVol24[i]!,
       listedAt: s.listedAt,
       excluded: noPrice || (s.delistedAt !== null && t >= s.delistedAt - notice),
-      roundTripCost: roundTripCost(sim, targetNotional, s.spotVol24[i]!, s.perpVol24[i]!),
+      roundTripCost: roundTripCost(sim, targetNotional, s.spotVol24[i]!, s.perpVol24[i]!, s.venue),
       cooldownUntil: cooldown.get(s.symbol) ?? null,
       volumeRank: rank.get(s.symbol) ?? null,
+      volatility: sp.maxEntryVolatility > 0 ? realizedVol(s.perpClose, i, sp.volatilityLookbackHours) : null,
     };
   };
 
@@ -270,7 +289,7 @@ export function simulate(ds: Dataset, cfg: SimConfig): SimResult {
     if (!alwaysOn && i + 1 < ds.hours) {
       const { eq } = equityAt(i);
       const targetNotional = (eq * sp.maxPositionFraction) / cpn;
-      const cands: Candidate[] = [];
+      let cands: Candidate[] = [];
       const bySymbol = new Map<string, SymbolSeries>();
       if (sp.universeTopN > 0 && ds.symbols.some((s) => !Number.isNaN(s.fundingRate[i + 1]!))) {
         rank.clear();
@@ -298,6 +317,18 @@ export function simulate(ds: Dataset, cfg: SimConfig): SimResult {
             bySymbol.set(s.symbol, s);
           }
         }
+      }
+      if (cands.length) {
+        // One position per coin across venues: skip coins already held, keep the best venue per coin.
+        const held = new Set([...positions.values()].map((p) => p.s.base));
+        const best = new Map<string, Candidate>();
+        for (const c of cands) {
+          const base = bySymbol.get(c.symbol)!.base;
+          if (held.has(base)) continue;
+          const cur = best.get(base);
+          if (!cur || c.expectedNetIncome > cur.expectedNetIncome) best.set(base, c);
+        }
+        cands = [...best.values()];
       }
       if (cands.length) {
         const { eq: eqNow } = equityAt(i);

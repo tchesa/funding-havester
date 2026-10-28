@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { defaultSimParams, type SimParams } from "../src/config/params.js";
 import { HOUR } from "../src/data/parse.js";
-import { simulate } from "../src/backtest/simulator.js";
+import { realizedVol, simulate } from "../src/backtest/simulator.js";
 import { shortLiquidationPrice } from "../src/backtest/liquidation.js";
 import { params, synthDataset, synthSeries, T0 } from "./helpers.js";
 
@@ -129,5 +129,38 @@ describe("simulator entry filters", () => {
       strategy: params({ universeTopN: 1, maxPositions: 2 }), sim: defaultSimParams(), from: at(24 * 3), to: at(hours - 2),
     });
     expect(new Set(r.trades.map((t) => t.symbol))).toEqual(new Set(["BIGUSDT"]));
+  });
+});
+
+describe("realized volatility", () => {
+  it("is zero for a flat series and matches a known alternating series", () => {
+    expect(realizedVol(new Float64Array(200).fill(100), 200, 168)).toBe(0);
+    const alt = Float64Array.from({ length: 200 }, (_, i) => (i % 2 ? 101 : 100));
+    const r = Math.log(1.01);
+    expect(realizedVol(alt, 200, 168)).toBeCloseTo(r * Math.sqrt(8760), 6);
+    expect(realizedVol(new Float64Array(200).fill(NaN), 200, 168)).toBeNull();
+  });
+});
+
+describe("multi-venue", () => {
+  it("charges each venue's own fees", () => {
+    const hours = 24 * 10;
+    const s = synthSeries({ symbol: "bybit:TESTUSDT", venue: "bybit", hours });
+    const sim: SimParams = { ...defaultSimParams(), slippageA: 0, slippageB: 0, venueFees: { bybit: { spot: 0.002, perp: 0.001 } } };
+    const r = simulate(synthDataset([s], hours), { strategy: params(), sim, from: at(24), to: at(hours - 2), alwaysOn: ["bybit:TESTUSDT"] });
+    const t = r.trades[0]!;
+    expect(t.fees).toBeCloseTo(2 * t.notional * (0.002 + 0.001), 6);
+  });
+
+  it("holds at most one position per coin across venues", () => {
+    const hours = 24 * 20;
+    const mk = (symbol: string, venue: string) =>
+      synthSeries({ symbol, venue, base: "TEST", hours, rate: () => 0.0003, premium: () => 0.0008 });
+    const ds = synthDataset([mk("TESTUSDT", "binance"), mk("bybit:TESTUSDT", "bybit")], hours);
+    const r = simulate(ds, { strategy: params({ maxPositions: 3 }), sim: defaultSimParams(), from: at(24 * 3), to: at(hours - 2) });
+    expect(r.trades.length).toBe(1);
+    expect(Math.max(...r.openCount)).toBe(1);
+    // Binance is cheaper (BNB discount), so it wins the tie on expected net income.
+    expect(r.trades[0]!.symbol).toBe("TESTUSDT");
   });
 });

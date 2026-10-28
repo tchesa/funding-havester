@@ -33,9 +33,11 @@ export interface SymbolSnapshot {
   cooldownUntil: number | null;
   /** 1-based rank by min(perp, spot) 24h volume among tradable symbols; null if unknown. */
   volumeRank: number | null;
+  /** Annualized realized volatility of hourly perp returns; null if not computed. */
+  volatility: number | null;
 }
 
-export type EntryReason = "ok" | "universe" | "predicted_below_threshold" | "streak_broken" | "income_below_cost" | "no_data" | "cooldown" | "rate_too_high";
+export type EntryReason = "ok" | "universe" | "predicted_below_threshold" | "streak_broken" | "income_below_cost" | "no_data" | "cooldown" | "rate_too_high" | "too_volatile";
 export type ExitReason = "hold" | "rolling_below_exit" | "predicted_negative" | "universe";
 
 /** Exits that should trigger a re-entry cooldown (anything other than funding fading normally). */

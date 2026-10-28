@@ -26,6 +26,10 @@ export const strategyParamsSchema = z.object({
   maxEntryRate8h: z.number().nonnegative().default(0),
   /** Only enter the N most liquid symbols, ranked by min(perp, spot) 24h volume (0 = off). */
   universeTopN: z.number().int().nonnegative().default(0),
+  /** Skip entries whose annualized realized volatility (hourly perp returns) exceeds this (0 = off). */
+  maxEntryVolatility: z.number().nonnegative().default(0),
+  /** Lookback for realized volatility, in hours. */
+  volatilityLookbackHours: z.number().int().positive().default(168),
 });
 export type StrategyParams = z.infer<typeof strategyParamsSchema>;
 
@@ -43,6 +47,13 @@ export const simParamsSchema = z.object({
   /** Hard cap on slippage per leg per side (thin/illiquid markets). */
   slippageMax: z.number().positive().default(0.03),
   maintenanceMarginRate: z.number().nonnegative().default(0.005),
+  /**
+   * Fees for venues other than Binance (Binance uses the fields above). VIP0 taker defaults:
+   * Bybit spot 0.1% / perp 0.055%, OKX spot 0.1% / perp 0.05%. No BNB-style discount.
+   */
+  venueFees: z
+    .record(z.string(), z.object({ spot: z.number().nonnegative(), perp: z.number().nonnegative() }))
+    .default({ bybit: { spot: 0.001, perp: 0.00055 }, okx: { spot: 0.001, perp: 0.0005 } }),
   /** Top up / rebalance when price is within this fraction of the liquidation price. */
   marginBufferTrigger: z.number().positive().default(0.3),
 });

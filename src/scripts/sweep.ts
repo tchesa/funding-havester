@@ -5,6 +5,7 @@ import {
 } from "../config/params.js";
 import { type LoadOptions, loadDataset } from "../data/loaders.js";
 import { openDb } from "../db/db.js";
+import { normalizeId } from "../data/venues.js";
 import { summarize } from "../backtest/format.js";
 import { computeMetrics } from "../backtest/metrics.js";
 import { SimPool } from "../backtest/pool.js";
@@ -21,6 +22,7 @@ const { values } = parseArgs({
     from: { type: "string", default: "2023-03-01" },
     to: { type: "string", default: new Date().toISOString().slice(0, 10) },
     symbols: { type: "string" },
+    venues: { type: "string", default: "binance" }, // comma list: binance,bybit,okx
     train: { type: "string", default: "6" },
     test: { type: "string", default: "3" },
     step: { type: "string", default: "3" },
@@ -58,7 +60,8 @@ if (!windows.length) throw new Error("no walk-forward windows fit in the date ra
 const load: LoadOptions = {
   from: from - 30 * 86_400_000,
   to,
-  ...(values.symbols ? { symbols: values.symbols.split(",").map((s) => s.trim().toUpperCase()) } : {}),
+  ...(values.symbols ? { symbols: values.symbols.split(",").map(normalizeId) } : {}),
+  venues: values.venues!.split(",").map((v) => v.trim()),
   minPerpVolume24h: Math.min(base.minPerpVolume24h, ...(grid.minPerpVolume24h ?? [])),
   minSpotVolume24h: Math.min(base.minSpotVolume24h, ...(grid.minSpotVolume24h ?? [])),
 };

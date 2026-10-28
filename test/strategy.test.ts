@@ -123,3 +123,13 @@ describe("entry filters (cooldown, rate cap, top-N universe)", () => {
     expect(evaluateEntry(snap({ volumeRank: 50 }), params()).enter).toBe(true);
   });
 });
+
+describe("volatility filter", () => {
+  it("blocks entries above the volatility cap and when volatility is unknown", () => {
+    const p = params({ maxEntryVolatility: 1 });
+    expect(evaluateEntry(snap({ volatility: 0.8 }), p).enter).toBe(true);
+    expect(evaluateEntry(snap({ volatility: 1.2 }), p).reason).toBe("too_volatile");
+    expect(evaluateEntry(snap({ volatility: null }), p).reason).toBe("too_volatile");
+    expect(evaluateEntry(snap({ volatility: 5 }), params()).enter).toBe(true);
+  });
+});

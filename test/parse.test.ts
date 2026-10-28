@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { fromRawFunding, monthRange, parseFundingCsv, parseKlineCsv, snapHour, toMs } from "../src/data/parse.js";
 import { matchSpot } from "../src/data/symbols.js";
+import { aggregateOkxMinutes } from "../src/data/backfill-venues.js";
 
 describe("archive parsing", () => {
   it("parses funding CSV with header and snaps drifting timestamps to the hour", () => {
@@ -54,5 +55,31 @@ describe("spot matching", () => {
     expect(matchSpot("USDCUSDT", spot)).toBeNull();
     expect(matchSpot("BTCUSDC", spot)).toBeNull();
     expect(matchSpot("DOGEUSDT", spot)).toBeNull();
+  });
+});
+
+describe("scaled contract bases", () => {
+  it("strips multiplier prefixes only when a real ticker remains", async () => {
+    const { baseCandidates } = await import("../src/data/symbols.js");
+    expect(baseCandidates("10000000AIDOGE")).toEqual(["10000000AIDOGE", "AIDOGE"]);
+    expect(baseCandidates("1000PEPE")).toEqual(["1000PEPE", "PEPE"]);
+    expect(baseCandidates("1INCH")).toEqual(["1INCH"]);
+  });
+});
+
+describe("OKX archive candles", () => {
+  const H = 3_600_000;
+  const head = "instrument_name,open,high,low,close,vol,vol_ccy,vol_quote,open_time,confirm\n";
+  it("aggregates minutes to hours (open = first, close = last, summed quote volume)", () => {
+    const csv = head + [`X,1,2,0.5,1.5,10,15,15,${H + 60_000},1`, `X,1.1,3,1,2,10,20,20,${H},1`, `X,2,2,2,2,1,2,2,${2 * H},1`].join("\n");
+    expect(aggregateOkxMinutes(csv)).toEqual([
+      { t: H, o: 1.1, h: 3, l: 0.5, c: 1.5, qv: 35 },
+      { t: 2 * H, o: 2, h: 2, l: 2, c: 2, qv: 2 },
+    ]);
+  });
+  it("estimates quote volume when vol_quote is None and drops repeated minutes", () => {
+    const row = `X,1,1,1,2,10,99,None,${H},1`;
+    expect(aggregateOkxMinutes(head + [row, row].join("\n"), "spot")[0]!.qv).toBe(20); // vol × close
+    expect(aggregateOkxMinutes(head + row, "perp")[0]!.qv).toBe(198); // vol_ccy × close
   });
 });

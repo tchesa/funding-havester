@@ -2,6 +2,7 @@ import { parseArgs } from "node:util";
 import { env } from "../config/env.js";
 import { defaultSimParams, defaultStrategyParams, simParamsSchema, strategyParamsSchema } from "../config/params.js";
 import { loadDataset } from "../data/loaders.js";
+import { normalizeId } from "../data/venues.js";
 import { openDb } from "../db/db.js";
 import { summarize } from "../backtest/format.js";
 import { computeMetrics } from "../backtest/metrics.js";
@@ -16,6 +17,7 @@ const { values } = parseArgs({
     from: { type: "string", default: "2023-03-01" },
     to: { type: "string", default: new Date().toISOString().slice(0, 10) },
     symbols: { type: "string" },
+    venues: { type: "string", default: "binance" }, // comma list: binance,bybit,okx
     "always-on": { type: "string" },
     params: { type: "string" }, // JSON overrides for strategy params
     sim: { type: "string" }, // JSON overrides for sim params
@@ -27,8 +29,9 @@ const strategy = strategyParamsSchema.parse({ ...defaultStrategyParams(), ...JSO
 const sim = simParamsSchema.parse({ ...defaultSimParams(), ...JSON.parse(values.sim ?? "{}") });
 const from = Date.parse(values.from!);
 const to = Date.parse(values.to!);
-const alwaysOn = values["always-on"]?.split(",").map((s) => s.trim().toUpperCase());
-const symbols = values.symbols?.split(",").map((s) => s.trim().toUpperCase()) ?? alwaysOn;
+const alwaysOn = values["always-on"]?.split(",").map(normalizeId);
+const symbols = values.symbols?.split(",").map(normalizeId) ?? alwaysOn;
+const venues = values.venues!.split(",").map((v) => v.trim());
 
 const db = openDb(env.DB_PATH);
 const t0 = Date.now();
@@ -37,6 +40,7 @@ const ds = loadDataset(db, {
   from: from - 30 * 86_400_000,
   to,
   ...(symbols ? { symbols } : {}),
+  venues,
   minPerpVolume24h: strategy.minPerpVolume24h,
   minSpotVolume24h: strategy.minSpotVolume24h,
 });

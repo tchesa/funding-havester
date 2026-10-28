@@ -15,6 +15,8 @@ export interface SynthOpts {
   interval?: number;
   vol24?: number;
   premium?: (i: number) => number;
+  venue?: string;
+  base?: string;
 }
 
 export function synthSeries(o: SynthOpts): SymbolSeries {
@@ -23,6 +25,8 @@ export function synthSeries(o: SynthOpts): SymbolSeries {
   const interval = o.interval ?? 8;
   const s: SymbolSeries = {
     symbol: o.symbol ?? "TESTUSDT",
+    venue: o.venue ?? "binance",
+    base: o.base ?? (o.symbol ?? "TESTUSDT").replace(/USDT$/, "").replace(/^.*:/, ""),
     perpClose: new Float64Array(n),
     perpHigh: new Float64Array(n),
     spotClose: new Float64Array(n),
@@ -79,6 +83,7 @@ export function snap(over: Partial<SymbolSnapshot> = {}): SymbolSnapshot {
     roundTripCost: 0.003,
     cooldownUntil: null,
     volumeRank: null,
+    volatility: null,
     ...over,
   };
 }
