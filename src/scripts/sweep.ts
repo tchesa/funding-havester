@@ -30,6 +30,7 @@ const { values } = parseArgs({
     sim: { type: "string" },
     criteria: { type: "string" },
     workers: { type: "string" },
+    label: { type: "string" },
   },
 });
 
@@ -98,6 +99,7 @@ const paths = writeReport("reports", {
   results,
   oos,
   fullPeriod: { params: modal, metrics: fullMetrics },
+  ...(values.label ? { label: values.label } : {}),
 });
 
 const verdict = goNoGo(oos, criteria);
@@ -106,3 +108,10 @@ console.log(`Full period (modal params):\n${summarize(fullMetrics)}`);
 console.log(`\nVerdict: ${verdict.go ? "GO" : "NO-GO"}`);
 for (const c of verdict.checks) console.log(`  ${c.pass ? "✓" : "✗"} ${c.name}: ${c.value} (${c.threshold})`);
 console.log(`\nReport: ${paths.md}`);
+const inc = oos.income;
+console.log(
+  `SUMMARY\t${values.label ?? "-"}\tapr=${(oos.netApr * 100).toFixed(2)}%\tdd=${(oos.maxDrawdown * 100).toFixed(2)}%` +
+  `\tstd=${(oos.aprStdDev * 100).toFixed(2)}%\tpos=${(oos.positiveWindowShare * 100).toFixed(0)}%\tliq=${oos.liquidations}` +
+  `\ttrades=${oos.trades}\tfunding=${inc.funding.toFixed(0)}\tfees=${inc.fees.toFixed(0)}\tslip=${inc.slippage.toFixed(0)}\tbasis=${inc.basis.toFixed(0)}` +
+  `\tfullApr=${(fullMetrics.netApr * 100).toFixed(2)}%\tfullLiq=${fullMetrics.liquidations}\t${verdict.go ? "GO" : "NO-GO"}`,
+);

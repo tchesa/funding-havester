@@ -29,10 +29,17 @@ export interface SymbolSnapshot {
   excluded: boolean;
   /** Estimated round-trip cost as a fraction of notional (fees + slippage, both legs, in and out). */
   roundTripCost: number;
+  /** Entries are blocked before this time (cooldown after a forced exit); null = none. */
+  cooldownUntil: number | null;
+  /** 1-based rank by min(perp, spot) 24h volume among tradable symbols; null if unknown. */
+  volumeRank: number | null;
 }
 
-export type EntryReason = "ok" | "universe" | "predicted_below_threshold" | "streak_broken" | "income_below_cost" | "no_data";
+export type EntryReason = "ok" | "universe" | "predicted_below_threshold" | "streak_broken" | "income_below_cost" | "no_data" | "cooldown" | "rate_too_high";
 export type ExitReason = "hold" | "rolling_below_exit" | "predicted_negative" | "universe";
+
+/** Exits that should trigger a re-entry cooldown (anything other than funding fading normally). */
+export const FORCED_EXITS: ReadonlySet<string> = new Set(["liquidation", "margin_reduce", "predicted_negative", "universe", "data_end"]);
 
 export interface Candidate {
   symbol: string;

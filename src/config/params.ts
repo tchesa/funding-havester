@@ -20,6 +20,12 @@ export const strategyParamsSchema = z.object({
   minPerpVolume24h: z.number().nonnegative().default(50_000_000),
   minSpotVolume24h: z.number().nonnegative().default(20_000_000),
   minListingAgeDays: z.number().nonnegative().default(30),
+  /** Block re-entry into a symbol for this many hours after a forced exit (0 = off). */
+  reentryCooldownHours: z.number().nonnegative().default(0),
+  /** Skip entries whose predicted or recent funding exceeds this per-8h rate: squeeze signal (0 = off). */
+  maxEntryRate8h: z.number().nonnegative().default(0),
+  /** Only enter the N most liquid symbols, ranked by min(perp, spot) 24h volume (0 = off). */
+  universeTopN: z.number().int().nonnegative().default(0),
 });
 export type StrategyParams = z.infer<typeof strategyParamsSchema>;
 

@@ -39,17 +39,19 @@ export interface ReportInput {
   oos: CombinedOos;
   /** Full-period run with the most frequently selected params, for symbol/regime breakdowns. */
   fullPeriod: { params: StrategyParams; metrics: Metrics };
+  /** Optional run label, appended to the file name and title. */
+  label?: string;
 }
 
 export function writeReport(dir: string, input: ReportInput): { md: string; json: string } {
   mkdirSync(dir, { recursive: true });
-  const stamp = new Date(input.generatedAt).toISOString().replace(/[:.]/g, "-").slice(0, 19);
+  const stamp = new Date(input.generatedAt).toISOString().replace(/[:.]/g, "-").slice(0, 19) + (input.label ? `-${input.label}` : "");
   const { go, checks } = goNoGo(input.oos, input.criteria);
   const o = input.oos;
   const fp = input.fullPeriod.metrics;
 
   const md: string[] = [];
-  md.push(`# Phase 0 backtest report`, "");
+  md.push(`# Phase 0 backtest report${input.label ? ` (${input.label})` : ""}`, "");
   md.push(`Generated ${new Date(input.generatedAt).toISOString()} · data ${iso(input.dataFrom)} → ${iso(input.dataTo)} · ${input.symbols} symbols · ${input.combos} param combos · ${input.results.length} walk-forward windows`, "");
   md.push(`## Verdict: ${go ? "GO ✅" : "NO-GO ❌"}`, "");
   md.push(`| Check | Value | Threshold | Pass |`, `|---|---|---|---|`);

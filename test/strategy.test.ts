@@ -96,3 +96,30 @@ describe("allocation", () => {
     expect(out).toEqual([]);
   });
 });
+
+describe("entry filters (cooldown, rate cap, top-N universe)", () => {
+  it("blocks entries during a cooldown and allows them after", () => {
+    const s = snap();
+    expect(evaluateEntry({ ...s, cooldownUntil: s.time + 1 }, params()).reason).toBe("cooldown");
+    expect(evaluateEntry({ ...s, cooldownUntil: s.time }, params()).enter).toBe(true);
+  });
+
+  it("skips symbols whose predicted or recent funding is extreme", () => {
+    const p = params({ maxEntryRate8h: 0.001 });
+    expect(evaluateEntry(snap({ predictedRate: 0.002 }), p).reason).toBe("rate_too_high");
+    const spiky = snap();
+    spiky.recentRates = spiky.recentRates.map((r, i, a) => (i === a.length - 1 ? { ...r, rate: 0.0015 } : r));
+    expect(evaluateEntry(spiky, p).reason).toBe("rate_too_high");
+    // a 1h-interval rate of 0.0002 is 0.0016 per 8h
+    expect(evaluateEntry(snap({ predictedRate: 0.0002, intervalHours: 1 }), p).reason).toBe("rate_too_high");
+    expect(evaluateEntry(snap(), p).enter).toBe(true);
+  });
+
+  it("restricts the universe to the top-N by volume rank", () => {
+    const p = params({ universeTopN: 10 });
+    expect(evaluateEntry(snap({ volumeRank: 10 }), p).enter).toBe(true);
+    expect(evaluateEntry(snap({ volumeRank: 11 }), p).reason).toBe("universe");
+    expect(evaluateEntry(snap({ volumeRank: null }), p).reason).toBe("universe");
+    expect(evaluateEntry(snap({ volumeRank: 50 }), params()).enter).toBe(true);
+  });
+});

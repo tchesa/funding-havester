@@ -4,6 +4,7 @@ import { HOUR } from "../data/parse.js";
 import {
   allocate, capitalPerNotional, type Candidate, evaluateEntry, evaluateExit, predictFundingRate, type SymbolSnapshot,
 } from "../strategy/index.js";
+import { FORCED_EXITS } from "../strategy/types.js";
 import { roundTripCost, slippage, spotFee } from "./costs.js";
 import { marginTriggerPrice, shortLiquidationPrice, targetMargin } from "./liquidation.js";
 
@@ -91,6 +92,11 @@ export function simulate(ds: Dataset, cfg: SimConfig): SimResult {
 
   let cash = sim.initialCapital;
   const positions = new Map<string, Pos>();
+  /** Symbol → time before which re-entry is blocked. */
+  const cooldown = new Map<string, number>();
+  const cooldownMs = sp.reentryCooldownHours * HOUR;
+  /** Volume rank per symbol at the current decision hour (only when universeTopN is on). */
+  const rank = new Map<string, number>();
   const res: SimResult = {
     initialCapital: sim.initialCapital,
     times: [], equity: [], capitalUsed: [], openCount: [], trades: [], events: [],
@@ -142,6 +148,7 @@ export function simulate(ds: Dataset, cfg: SimConfig): SimResult {
     res.totals.slippage += p.slippage;
     res.totals.basis += p.basis;
     positions.delete(p.s.symbol);
+    if (cooldownMs > 0 && FORCED_EXITS.has(reason)) cooldown.set(p.s.symbol, timeAt(ds, i) + cooldownMs);
   };
 
   /** Close fraction f of both legs at prices at time i. */
@@ -198,6 +205,7 @@ export function simulate(ds: Dataset, cfg: SimConfig): SimResult {
       if (topup >= need) return;
       const f = guard === 9 ? 1 : 0.25;
       res.events.push({ time: timeAt(ds, i), symbol: p.s.symbol, type: "reduce", amount: p.notional * f });
+      if (cooldownMs > 0) cooldown.set(p.s.symbol, timeAt(ds, i) + cooldownMs);
       close(p, i, f, "margin_reduce");
     }
   };
@@ -223,6 +231,8 @@ export function simulate(ds: Dataset, cfg: SimConfig): SimResult {
       listedAt: s.listedAt,
       excluded: noPrice || (s.delistedAt !== null && t >= s.delistedAt - notice),
       roundTripCost: roundTripCost(sim, targetNotional, s.spotVol24[i]!, s.perpVol24[i]!),
+      cooldownUntil: cooldown.get(s.symbol) ?? null,
+      volumeRank: rank.get(s.symbol) ?? null,
     };
   };
 
@@ -262,6 +272,16 @@ export function simulate(ds: Dataset, cfg: SimConfig): SimResult {
       const targetNotional = (eq * sp.maxPositionFraction) / cpn;
       const cands: Candidate[] = [];
       const bySymbol = new Map<string, SymbolSeries>();
+      if (sp.universeTopN > 0 && ds.symbols.some((s) => !Number.isNaN(s.fundingRate[i + 1]!))) {
+        rank.clear();
+        const liq: Array<[string, number]> = [];
+        for (const s of ds.symbols) {
+          const v = Math.min(s.perpVol24[i]!, s.spotVol24[i]!);
+          if (v > 0) liq.push([s.symbol, v]);
+        }
+        liq.sort((a, b) => b[1] - a[1]);
+        liq.forEach(([sym], k) => rank.set(sym, k + 1));
+      }
       for (const s of ds.symbols) {
         if (Number.isNaN(s.fundingRate[i + 1]!) || s.firstIdx < 0 || i <= s.firstIdx) continue;
         const pos = positions.get(s.symbol);

@@ -77,6 +77,8 @@ export function snap(over: Partial<SymbolSnapshot> = {}): SymbolSnapshot {
     listedAt: null,
     excluded: false,
     roundTripCost: 0.003,
+    cooldownUntil: null,
+    volumeRank: null,
     ...over,
   };
 }

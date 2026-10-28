@@ -103,3 +103,31 @@ describe("cost model", () => {
     expect(slippage(sim, 1000, 24e6)).toBeCloseTo(sim.slippageA + sim.slippageB * Math.sqrt(1000 / 1e6));
   });
 });
+
+describe("simulator entry filters", () => {
+  it("waits out the re-entry cooldown after a liquidation", () => {
+    const hours = 24 * 60;
+    const wick = 24 * 10 + 3;
+    const s = synthSeries({ hours, rate: () => 0.0003, premium: () => 0.0008, high: (i) => (i === wick ? 300 : 100) });
+    const run = (reentryCooldownHours: number) =>
+      simulate(synthDataset([s], hours), {
+        strategy: params({ leverage: 2, reentryCooldownHours }), sim: defaultSimParams(), from: at(24 * 3), to: at(hours - 2),
+      });
+    const noCd = run(0);
+    expect(noCd.trades[0]!.exitReason).toBe("liquidation");
+    expect(noCd.trades[1]!.openTime).toBeLessThan(at(wick + 24));
+    const cd = run(24 * 14);
+    expect(cd.trades[0]!.exitReason).toBe("liquidation");
+    expect(cd.trades[1]!.openTime).toBeGreaterThanOrEqual(at(wick + 1 + 24 * 14));
+  });
+
+  it("ranks symbols by min(perp, spot) volume for the top-N universe", () => {
+    const hours = 24 * 20;
+    const big = synthSeries({ symbol: "BIGUSDT", hours, rate: () => 0.0003, premium: () => 0.0008, vol24: 1e12 });
+    const small = synthSeries({ symbol: "SMALLUSDT", hours, rate: () => 0.0003, premium: () => 0.0008, vol24: 1e11 });
+    const r = simulate(synthDataset([small, big], hours), {
+      strategy: params({ universeTopN: 1, maxPositions: 2 }), sim: defaultSimParams(), from: at(24 * 3), to: at(hours - 2),
+    });
+    expect(new Set(r.trades.map((t) => t.symbol))).toEqual(new Set(["BIGUSDT"]));
+  });
+});

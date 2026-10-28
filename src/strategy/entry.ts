@@ -1,4 +1,4 @@
-import { expectedFundingPer8h, predicted8h } from "./funding.js";
+import { expectedFundingPer8h, predicted8h, to8h } from "./funding.js";
 import type { Candidate, EntryReason, StrategyParams, SymbolSnapshot } from "./types.js";
 import { passesUniverse } from "./universe.js";
 
@@ -11,6 +11,7 @@ export interface EntryDecision {
 /** Strategy doc §2.3. */
 export function evaluateEntry(s: SymbolSnapshot, p: StrategyParams): EntryDecision {
   if (!passesUniverse(s, p)) return { enter: false, reason: "universe", candidate: null };
+  if (s.cooldownUntil !== null && s.time < s.cooldownUntil) return { enter: false, reason: "cooldown", candidate: null };
 
   const expected = expectedFundingPer8h(s, p);
   const pred = predicted8h(s);
@@ -25,6 +26,10 @@ export function evaluateEntry(s: SymbolSnapshot, p: StrategyParams): EntryDecisi
   };
 
   if (pred <= p.entryThreshold) return { enter: false, reason: "predicted_below_threshold", candidate };
+  if (p.maxEntryRate8h > 0) {
+    const recentMax = Math.max(...s.recentRates.slice(-Math.max(p.m, 1)).map((r) => to8h(r.rate, r.intervalHours)));
+    if (pred > p.maxEntryRate8h || recentMax > p.maxEntryRate8h) return { enter: false, reason: "rate_too_high", candidate };
+  }
   const streak = s.recentRates.slice(-p.m);
   if (streak.some((r) => r.rate <= 0)) return { enter: false, reason: "streak_broken", candidate };
   if (expected * p.expectedHoldingPeriods <= s.roundTripCost * p.safetyFactor) {
