@@ -8,6 +8,7 @@ Best out-of-sample results (bar: ≥8% APR, 0 liquidations): spot/perp carry 2.5
 - `pnpm backfill --from 2023-01 [--venue binance|bybit|okx] [--symbols BTC,ETH] [--no-gap-fill]`: download history into SQLite (resumable). Run `okx` after the others: delisted OKX swaps are found by probing bases seen on other venues.
 - `pnpm backtest --from 2024-01-01 --to 2026-10-01 [--symbols ..] [--always-on BTCUSDT] [--params '{"leverage":2}'] [--sim '{..}']`
 - `pnpm sweep [--strategy carry|spread] [--venues binance,bybit,okx] [--label name] [--quick] [--grid '{..}'] [--train 6 --test 3 --step 3] [--workers N]`: walk-forward grid search, writes `reports/<ts>.md|json`
+- `pnpm study [--from .. --to .. --venues ..]`: funding-momentum Phase A event study (`src/research/`), writes `reports/<ts>-study.md|json` with an automatic gate
 - `pnpm typecheck && pnpm test`
 
 ## Layout

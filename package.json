@@ -11,6 +11,7 @@
     "backfill": "node --no-warnings=ExperimentalWarning --import tsx src/scripts/backfill.ts",
     "backtest": "node --no-warnings=ExperimentalWarning --import tsx src/scripts/backtest.ts",
     "sweep": "node --no-warnings=ExperimentalWarning --import tsx src/scripts/sweep.ts",
+    "study": "node --no-warnings=ExperimentalWarning --import tsx src/scripts/study.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },
